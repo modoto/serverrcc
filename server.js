@@ -105,27 +105,27 @@ class StreamManager {
 
 // 🔁 Jalankan banyak kamera sekaligus manual
 const cameras = [
-  // {
-  //   name: 'kamera-1',
-  //   streamUrl: 'rtsp://admin:spmkawal123%23@192.167.0.3:554/',
-  //   wsPort: 9999,
-  //   ffmpegOptions: {
-  //     '-r': 60,
-  //     '-vf': 'scale=1280:720', //scale=1536:432',
-  //     '-b:v': '1024k',
-  //     '-g': 60,
-  //     '-codec:v': 'mpeg1video',
-  //     '-codec:a': 'mp2',
-  //     '-ar': 16000,
-  //     '-ac': 1,
-  //     '-stats': '',
-  //     '-fflags': 'nobuffer'
-  //   },
-  //   maxRetries: 20,
-  //   retryDelay: 5000,
-  //   watchdogTimeout: 10000,         // restart jika tidak ada frame selama 10 detik
-  //   watchdogCheckInterval: 3000     // cek setiap 3 detik
-  // },
+  {
+    name: 'kamera-1',
+    streamUrl: 'rtsp://admin:spmkawal123%23@192.167.0.3:554/',
+    wsPort: 9999,
+    ffmpegOptions: {
+      '-r': 60,
+      '-vf': 'scale=1280:720', //scale=1536:432',
+      '-b:v': '1024k',
+      '-g': 60,
+      '-codec:v': 'mpeg1video',
+      '-codec:a': 'mp2',
+      '-ar': 16000,
+      '-ac': 1,
+      '-stats': '',
+      '-fflags': 'nobuffer'
+    },
+    maxRetries: 20,
+    retryDelay: 5000,
+    watchdogTimeout: 10000,         // restart jika tidak ada frame selama 10 detik
+    watchdogCheckInterval: 3000     // cek setiap 3 detik
+  },
   {
     name: 'kamera-2',
     streamUrl: 'rtsp://192.167.0.4:1554/live/1',
