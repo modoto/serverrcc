@@ -1,199 +1,165 @@
-const Stream = require('node-rtsp-stream');
-const net = require('net');
-const pool = require('./db');
+const fs = require("fs");
+const https = require("https");
+const express = require("express");
+const { Server } = require("socket.io");
+const mediasoup = require("mediasoup");
+const { spawn } = require("child_process");
 
-class StreamManager {
-  constructor(config) {
-    this.config = config;
-    this.stream = null;
-    this.retryCount = 0;
-    this.maxRetries = config.maxRetries || 10;
-    this.retryDelay = config.retryDelay || 5000;
-    this.host = this.extractHost(config.streamUrl);
-    this.port = this.extractPort(config.streamUrl);
-    this.start();
-    this.startWatchdog();
+const app = express();
+app.use(express.static("public"));
 
-  }
+const server = https.createServer({
+  key: fs.readFileSync("key.pem"),
+  cert: fs.readFileSync("cert.pem")
+}, app);
 
-  extractHost(url) {
-    const match = url.match(/@([\d.]+):/);
-    return match ? match[1] : '127.0.0.1';
-  }
+const io = new Server(server);
 
-  extractPort(url) {
-    const match = url.match(/:(\d+)\//);
-    return match ? parseInt(match[1]) : 554;
-  }
+let worker, router;
+let producer;
+const transports = new Map();
 
-  startWatchdog() {
-    let lastFrameTime = Date.now();
+// ================= MEDIASOUP INIT =================
+(async () => {
+  worker = await mediasoup.createWorker({
+    rtcMinPort: 40000,
+    rtcMaxPort: 40100
+  });
 
-    this.stream.stream.stderr.on('data', data => {
-      const line = data.toString();
-      if (line.includes('frame=')) {
-        lastFrameTime = Date.now();
+  router = await worker.createRouter({
+    mediaCodecs: [{
+      kind: "video",
+      mimeType: "video/H264",
+      clockRate: 90000,
+      parameters: {
+        "packetization-mode": 1,
+        "profile-level-id": "42e01f",
+        "level-asymmetry-allowed": 1
       }
+    }]
+  });
+  console.log("🚀 Mediasoup ready");
+  await startFFmpeg();
+})();
+
+// ================= SOCKET =================
+io.on("connection", socket => {
+  console.log("🔗 client connected:", socket.id);
+  socket.emit("join", socket.id);
+
+  socket.on("rtpCapabilities", (callback) => {
+    console.log("➡️ sent rtpCapabilities");
+    callback(router.rtpCapabilities);
+  });
+
+  socket.on("createTransport", async callback => {
+    console.log("🛠 createTransport request");
+    const transport = await router.createWebRtcTransport({
+      listenIps: [{ ip: "192.168.10.202", announcedIp: "192.168.10.202" }], // ganti dengan IP server kamu
+      enableUdp: true,
+      enableTcp: true,
+      preferUdp: true,
+      initialAvailableOutgoingBitrate: 1000000
     });
 
-    this.watchdogInterval = setInterval(() => {
-      const now = Date.now();
-      if (now - lastFrameTime > this.config.watchdogTimeout) {
-        console.warn(`[${this.config.name}] No frame for ${this.config.watchdogTimeout / 1000}s. Restarting stream...`);
-        clearInterval(this.watchdogInterval);
-        this.retry();
-      }
-    }, this.config.watchdogCheckInterval);
-  }
+    transports.set(transport.id, transport);
+    console.log("✅ transport created:", transport.id);
 
-
-  async isRtspAlive(timeout = 3000) {
-    return new Promise(resolve => {
-      const socket = new net.Socket();
-      socket.setTimeout(timeout);
-      socket.once('connect', () => {
-        socket.destroy();
-        resolve(true);
-      });
-      socket.once('error', () => resolve(false));
-      socket.once('timeout', () => resolve(false));
-      socket.connect(this.port, this.host);
+    callback({
+      id: transport.id,
+      iceParameters: transport.iceParameters,
+      iceCandidates: transport.iceCandidates,
+      dtlsParameters: transport.dtlsParameters,
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
     });
-  }
+  });
 
-  start() {
-    console.log(`[${this.config.name}] Starting stream...`);
-    this.stream = new Stream({
-      name: this.config.name,
-      streamUrl: this.config.streamUrl,
-      wsPort: this.config.wsPort,
-      ffmpegOptions: this.config.ffmpegOptions
-    });
+  socket.on("connectTransport", async ({ transportId, dtlsParameters }) => {
+    console.log("🔗 connectTransport received:", transportId);
+    const transport = transports.get(transportId);
+    if (transport) {
+      await transport.connect({ dtlsParameters });
+      console.log("✅ transport connected:", transportId);
+    } else {
+      console.error("❌ transport not found:", transportId);
+    }
+  });
 
-    this.stream.stream.on('exitWithError', () => {
-      console.warn(`[${this.config.name}] FFmpeg error. Retrying in ${this.retryDelay / 1000}s...`);
-      this.retry();
-    });
-  }
-
-  async retry() {
-    if (this.retryCount >= this.maxRetries) {
-      console.error(`[${this.config.name}] Max retries reached. Giving up.`);
+  socket.on("consume", async ({ rtpCapabilities }, cb) => {
+    console.log("🎬 consume request");
+    if (!router.canConsume({ producerId: producer.id, rtpCapabilities })) {
+      console.error("❌ Cannot consume with given rtpCapabilities");
       return;
     }
 
-    this.retryCount++;
-    try {
-      if (this.stream) {
-        this.stream.stop();
-      }
-    } catch (e) {
-      console.warn(`[${this.config.name}] Error stopping stream: ${e.message}`);
+    const transport = transports.values().next().value;
+    if (!transport) {
+      console.error("❌ No transport available for consume");
+      return;
     }
 
-    const alive = await this.isRtspAlive();
-    if (!alive) {
-      console.log(`[${this.config.name}] RTSP not reachable. Retrying in ${this.retryDelay / 1000}s...`);
-      return setTimeout(() => this.retry(), this.retryDelay);
-    }
+    const consumer = await transport.consume({
+      producerId: producer.id,
+      rtpCapabilities,
+      paused: false
+    });
 
-    console.log(`[${this.config.name}] RTSP reachable. Restarting stream...`);
-    this.start();
-  }
-}
+    console.log("✅ consumer created:", consumer.id);
 
-
-// 🔁 Jalankan banyak kamera sekaligus manual
-const cameras = [
-  {
-    name: 'kamera-1',
-    streamUrl: 'rtsp://admin:spmkawal123%23@192.167.0.3:554/',
-    wsPort: 9999,
-    ffmpegOptions: {
-      '-r': 60,
-      '-vf': 'scale=1280:720', //scale=1536:432',
-      '-b:v': '1024k',
-      '-g': 60,
-      '-codec:v': 'mpeg1video',
-      '-codec:a': 'mp2',
-      '-ar': 16000,
-      '-ac': 1,
-      '-stats': '',
-      '-fflags': 'nobuffer'
-    },
-    maxRetries: 20,
-    retryDelay: 5000,
-    watchdogTimeout: 10000,         // restart jika tidak ada frame selama 10 detik
-    watchdogCheckInterval: 3000     // cek setiap 3 detik
-  },
-  {
-    name: 'kamera-2',
-    streamUrl: 'rtsp://192.167.0.4:1554/live/1',
-    wsPort: 9998,
-    ffmpegOptions: {
-      '-r': 60,
-      '-vf': 'scale=1920:1080',
-      '-b:v': '1024k',
-      '-g': 60,
-      '-codec:v': 'mpeg1video',
-      '-codec:a': 'mp2',
-      '-ar': 16000,
-      '-ac': 1,
-      '-stats': '',
-      '-fflags': 'nobuffer'
-    },
-    maxRetries: 20,
-    retryDelay: 5000,
-    watchdogTimeout: 10000,         // restart jika tidak ada frame selama 10 detik
-    watchdogCheckInterval: 3000     // cek setiap 3 detik
-  },
-  // {
-  //   name: 'ESP32',
-  //   streamUrl: 'rtsp://192.168.100.59:554/',
-  //   wsPort: 9999,
-  //   ffmpegOptions: {
-  //     '-r': 60,
-  //     '-vf': 'scale=1920:1080',
-  //     '-b:v': '1024k',
-  //     '-g': 60,
-  //     '-codec:v': 'mpeg1video',
-  //     '-codec:a': 'mp2',
-  //     '-ar': 16000,
-  //     '-ac': 1,
-  //     '-stats': '',
-  //     '-fflags': 'nobuffer'
-  //   },
-  //   maxRetries: 20,
-  //   retryDelay: 5000,
-  //   watchdogTimeout: 10000,         // restart jika tidak ada frame selama 10 detik
-  //   watchdogCheckInterval: 3000     // cek setiap 3 detik
-  // },
-  // Tambahkan kamera lain di sini
-];
-
-cameras.forEach(config => new StreamManager(config));
-
-
-// SELECT id, bwcam_id, device_name, model, item_no, serial_number, ip_address, mac_address, power, username, "password", 
-//     rtsp_url, rtsp_port, rtsp_username, rtsp_password,
-//     stream_url, ffmpeg_options, max_retries, retry_delay, watchdog_timeout, watchdog_check_interval,
-//     status, created_at, updated_at, last_updated_at, deleted_at, user_id
-//     FROM bwcam;
-
-// 🔁 Jalankan banyak kamera sekaligus dari database
-async function loadCamerasFromDB() {
-  const { rows } = await pool.query(`
-    SELECT
-      device_name,
-      stream_url, ffmpeg_options, max_retries, retry_delay, watchdog_timeout, watchdog_check_interval
-    FROM bwcam
-    WHERE status = 1
-  `);
-
-  rows.forEach(config => {
-    console.log(`Starting camera: ${config.device_name}`);
-    //new StreamManager(config);
+    cb({
+      id: consumer.id,
+      producerId: producer.id,
+      kind: consumer.kind,
+      rtpParameters: consumer.rtpParameters
+    });
   });
+});
+
+// ================= FFMPEG =================
+async function startFFmpeg() {
+  const plain = await router.createPlainTransport({
+    listenIp: "127.0.0.1",
+    rtcpMux: true,
+    comedia: true
+  });
+
+  producer = await plain.produce({
+    kind: "video",
+    rtpParameters: {
+      codecs: [{
+        mimeType: "video/H264",
+        payloadType: 96,
+        clockRate: 90000,
+        parameters: {
+          "packetization-mode": 1,
+          "profile-level-id": "42e01f"
+        }
+      }],
+      encodings: [{ ssrc: 12345678 }]
+    }
+  });
+
+  const port = plain.tuple.localPort;
+  console.log("🎥 FFmpeg RTP port:", port);
+
+  spawn("ffmpeg", [
+    "-rtsp_transport", "tcp",
+    "-i", "rtsp://admin:spmkawal123%23@192.168.10.163:554/",
+    "-an",
+    "-c:v", "libx264",
+    "-preset", "ultrafast",
+    "-tune", "zerolatency",
+    "-profile:v", "baseline",
+    "-level", "3.1",
+    "-pix_fmt", "yuv420p",
+    "-x264-params", "keyint=30:scenecut=0:bframes=0",
+    "-payload_type", "96",
+    "-f", "rtp",
+    `rtp://192.168.10.202:${port}`
+  ]);
 }
 
-//loadCamerasFromDB();
+// ================= START SERVER =================
+server.listen(8443, () => {
+  console.log("🚀 https://localhost:8443");
+});
