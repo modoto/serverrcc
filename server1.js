@@ -14,6 +14,7 @@ const options = {
   cert: fs.readFileSync('cert.pem'),
 };
 
+//const server = http.createServer(app);
 const server = https.createServer(options, app);
 
 app.use(express.static("public"));
@@ -210,3 +211,33 @@ const cameras = [
 
 cameras.forEach(config => new StreamManager(config));
 
+
+
+// 🔁 Jalankan banyak kamera sekaligus dari database
+// async function loadCamerasFromDB() {
+//   const bwcams = await Bwcam.getAll();
+//   const mtcams = await Bwcam.getAll();
+
+//   let cameras = []; // Tetap sebagai array
+
+//   bwcams.forEach(item => {
+//     const port = item.stream_url.split(':').pop(); 
+//     const camera = {
+//       name: item.mtcam_id,
+//       streamUrl: item.rtsp_url,
+//       wsPort: port,
+//       ffmpegOptions: item.ffmpeg_options,
+//       maxRetries: 20,
+//       retryDelay: 5000,
+//       watchdogTimeout: 10000,
+//       watchdogCheckInterval: 3000
+//     };
+//     cameras.push(camera);
+//   });
+
+//   //console.log(`Starting camera: ${cameras}`);
+
+//   cameras.forEach(config => new StreamManager(config));
+// }
+
+//loadCamerasFromDB();
