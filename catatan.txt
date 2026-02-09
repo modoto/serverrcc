@@ -1,0 +1,119 @@
+server {
+    listen 443 ssl;
+    server_name 192.168.10.202;
+
+    ssl_certificate     /etc/nginx/ssl/cert.pem;
+    ssl_certificate_key /etc/nginx/ssl/key.pem;
+
+    # Kamera 1
+    location /cam1 {
+        proxy_pass http://127.0.0.1:9965;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+    }
+
+    # Kamera 2
+    location /cam2 {
+        proxy_pass http://127.0.0.1:9966;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+    }
+
+    # Static web (opsional)
+    location / {
+        proxy_pass http://127.0.0.1:3000;   # kalau Express static jalan di port 3000
+    }
+}
+
+
+1. Install Certbot
+Di server Linux (Ubuntu/Debian):
+
+sudo apt update
+sudo apt install certbot python3-certbot-nginx -y
+
+2. Pastikan DNS/Domain
+- Let’s Encrypt butuh domain publik (misalnya kamera.example.com), bukan IP LAN.
+- Jadi kamu harus punya domain yang diarahkan ke IP server (via DNS A record).
+- Kalau hanya di LAN, Let’s Encrypt tidak bisa dipakai. Solusi: pakai self-signed atau internal CA.
+
+3. Konfigurasi Nginx Awal
+Sebelum sertifikat, buat konfigurasi Nginx sederhana
+
+server {
+    listen 80;
+    server_name kamera.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+    }
+}
+
+4. Generate Sertifikat
+Jalankan:
+sudo certbot --nginx -d kamera.example.com
+
+
+Certbot akan:
+- Verifikasi domain via HTTP challenge.
+- Install sertifikat otomatis ke Nginx.
+- Buat konfigurasi HTTPS.
+
+5. Konfigurasi Nginx Final (WSS + HTTPS)
+Setelah sertifikat aktif, tambahkan proxy untuk WebSocket kamera:
+server {
+    listen 443 ssl;
+    server_name kamera.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/kamera.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/kamera.example.com/privkey.pem;
+
+    # Kamera 1
+    location /cam1 {
+        proxy_pass http://127.0.0.1:9965;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+    }
+
+    # Kamera 2
+    location /cam2 {
+        proxy_pass http://127.0.0.1:9966;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+    }
+
+    # Static web
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+    }
+}
+
+
+
+6. Client Side
+Sekarang client bisa connect dengan aman:
+const player1 = new JSMpeg.Player('wss://kamera.example.com/cam1', { canvas: canvas1 });
+const player2 = new JSMpeg.Player('wss://kamera.example.com/cam2', { canvas: canvas2 });
+
+
+
+7. Renewal Otomatis
+Let’s Encrypt sertifikat berlaku 90 hari. Certbot otomatis bikin cron job untuk renew. Kamu bisa cek dengan:
+sudo certbot renew --dry-run
+
+
+
+Ringkasan
+- Kalau hanya LAN → pakai self-signed.
+- Kalau ada domain publik → pakai Let’s Encrypt via Certbot + Nginx.
+- Nginx handle HTTPS/WSS, Node.js tetap jalan di ws://localhost.
+
+Mau saya tunjukkan cara pakai self-signed certificate di LAN supaya browser tidak terlalu ribet, kalau kamu belum punya domain publik?
