@@ -122,8 +122,8 @@ class StreamManager {
 // 🔁 Jalankan banyak kamera sekaligus manual
 const cameras = [
   {
-    name: 'kamera-1',
-    streamUrl: 'rtsp://admin:spmkawal123%23@192.168.10.163:554/',
+    name: 'MTC-16',
+    streamUrl: 'rtsp://admin:spmkawal123%23@192.168.116.3:554/',
     wsPort: 9965,
     ffmpegOptions: {
       '-r': 60,
@@ -143,12 +143,12 @@ const cameras = [
     watchdogCheckInterval: 3000     // cek setiap 3 detik
   },
   {
-    name: 'kamera-1',
-    streamUrl: 'rtsp://admin:spmkawal123%23@192.168.10.153:554/',
+    name: 'BWC-16',
+    streamUrl: 'rtsp://192.168.116.4:1554/live/1',
     wsPort: 9966,
     ffmpegOptions: {
       '-r': 60,
-      '-vf': 'scale=1280:720', //scale=1536:432',
+      '-vf': 'scale=1920:1080',
       '-b:v': '1024k',
       '-g': 60,
       '-codec:v': 'mpeg1video',
@@ -164,8 +164,29 @@ const cameras = [
     watchdogCheckInterval: 3000     // cek setiap 3 detik
   },
   // {
-  //   name: 'kamera-2',
-  //   streamUrl: 'rtsp://192.167.0.4:1554/live/1',
+  //   name: 'MTC-17',
+  //   streamUrl: 'rtsp://admin:spmkawal123%23@192.198.10.153:554/',
+  //   wsPort: 9966,
+  //   ffmpegOptions: {
+  //     '-r': 60,
+  //     '-vf': 'scale=1280:720', //scale=1536:432',
+  //     '-b:v': '1024k',
+  //     '-g': 60,
+  //     '-codec:v': 'mpeg1video',
+  //     '-codec:a': 'mp2',
+  //     '-ar': 16000,
+  //     '-ac': 1,
+  //     '-stats': '',
+  //     '-fflags': 'nobuffer'
+  //   },
+  //   maxRetries: 20,
+  //   retryDelay: 5000,
+  //   watchdogTimeout: 10000,         // restart jika tidak ada frame selama 10 detik
+  //   watchdogCheckInterval: 3000     // cek setiap 3 detik
+  // },
+  // {
+  //   name: 'BWC-17',
+  //   streamUrl: 'rtsp://192.168.10.154:1554/live/1',
   //   wsPort: 9998,
   //   ffmpegOptions: {
   //     '-r': 60,

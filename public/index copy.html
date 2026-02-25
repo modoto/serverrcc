@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>CCTV Debug Player</title>
+
+  <style>
+    body {
+      background: #0f172a;
+      color: #e5e7eb;
+      font-family: Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .video-wrapper {
+      position: relative;
+      width: 640px;
+      height: 360px;
+      border: 4px dashed #22c55e; /* 🔥 penanda hijau */
+      background: #020617;
+    }
+
+    .video-wrapper::after {
+      content: "VIDEO CONTAINER AKTIF";
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      font-size: 12px;
+      color: #22c55e;
+      background: rgba(0,0,0,0.6);
+      padding: 4px 6px;
+      border-radius: 4px;
+      z-index: 10;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      border: 2px solid #ef4444; /* 🔴 border video */
+    }
+
+    .status {
+      position: absolute;
+      bottom: 6px;
+      left: 6px;
+      font-size: 12px;
+      background: rgba(0,0,0,0.6);
+      padding: 4px 6px;
+      border-radius: 4px;
+      color: #facc15;
+      z-index: 10;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="video-wrapper">
+    <video id="video" autoplay playsinline controls style="width:800px"></video>
+    <!-- <div class="status" id="status">menunggu stream…</div> -->
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script>
+  console.log("INLINE SCRIPT JALAN");
+</script>
+  <script type="module" src="/client.js"></script>
+</body>
+</html>

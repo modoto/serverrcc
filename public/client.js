@@ -1,44 +1,54 @@
 import * as mediasoupClient from "https://esm.sh/mediasoup-client@3";
 
-console.log("🔥 client.js loaded");
+const socket = io("https://10.57.69.146:8443", {
+  transports: ["websocket"]
+});
 
-const socket = io("https://192.167.61.17:8443", { transports: ["websocket"] });
+const video = document.getElementById("video");
 
-let device, recvTransport;
+let device;
+let transport;
 
-socket.on("join", async clientId => {
-  console.log("📥 join success:", clientId);
+(async () => {
 
-  const rtpCapabilities = await new Promise(res =>
-    socket.emit("rtpCapabilities", res)
+  const rtpCapabilities = await new Promise(r =>
+    socket.emit("getRtpCapabilities", r)
   );
-  console.log("📥 rtpCapabilities:", rtpCapabilities);
 
   device = new mediasoupClient.Device();
   await device.load({ routerRtpCapabilities: rtpCapabilities });
 
-  const recvParams = await new Promise(res =>
-    socket.emit("createTransport", res)
+  const params = await new Promise(r =>
+    socket.emit("createTransport", r)
   );
-  console.log("📥 recvParams:", recvParams);
 
-  recvTransport = device.createRecvTransport(recvParams);
+  transport = device.createRecvTransport(params);
 
-  // Log ICE candidate
-  recvTransport.on("icecandidate", c => {
-    console.log("🧊 ICE candidate from browser:", c);
-  });
-
-  recvTransport.on("connect", ({ dtlsParameters }, cb) => {
-    console.log("➡️ connectTransport fired");
+  transport.on("connect", ({ dtlsParameters }, cb) => {
     socket.emit("connectTransport", {
-      transportId: recvTransport.id,
+      transportId: transport.id,
       dtlsParameters
     });
     cb();
   });
 
-  recvTransport.on("connectionstatechange", state => {
+  transport.on("connectionstatechange", state => {
     console.log("🚦 connection state:", state);
   });
-});
+
+
+  const consumerParams = await new Promise(r =>
+    socket.emit("consume", {
+      transportId: transport.id,
+      rtpCapabilities: device.rtpCapabilities
+    }, r)
+  );
+
+  const consumer = await transport.consume(consumerParams);
+
+  await consumer.resume();
+  
+  const stream = new MediaStream([consumer.track]);
+  video.srcObject = stream;
+
+})();
