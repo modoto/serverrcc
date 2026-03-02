@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>CCTV Monitoring</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial;
+            background: #0f172a;
+            color: white;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+        }
+
+        .camera-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .camera-card {
+            background: #1e293b;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .status {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            display: inline-block;
+        }
+
+        .running {
+            background: #16a34a;
+        }
+
+        .stopped {
+            background: #dc2626;
+        }
+
+        button {
+            margin: 5px 5px 0 0;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .start {
+            background: #16a34a;
+            color: white;
+        }
+
+        .stop {
+            background: #dc2626;
+            color: white;
+        }
+
+        .restart {
+            background: #f59e0b;
+            color: black;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>🎥 CCTV Realtime Monitoring</h1>
+
+    <div class="camera-grid" id="cameraGrid"></div>
+
+    <script>
+        const socket = io();
+
+        const grid = document.getElementById("cameraGrid");
+
+        socket.on("camera_status", cameras => {
+            grid.innerHTML = "";
+
+            cameras.forEach(cam => {
+                const card = document.createElement("div");
+                card.className = "camera-card";
+
+                const statusClass = cam.running ? "running" : "stopped";
+                const statusText = cam.running ? "RUNNING" : "STOPPED";
+
+                card.innerHTML = `
+                <h3>${cam.name}</h3>
+                <div class="status ${statusClass}">${statusText}</div>
+                <p>Retry: ${cam.retryCount}</p>
+                <p>Latency: ${formatLatency(cam)}</p>
+                <p>Timeout Count: ${cam.timeoutCount}</p>
+                <button class="start" onclick="startCam('${cam.name}')">Start</button>
+                <button class="stop" onclick="stopCam('${cam.name}')">Stop</button>
+                <button class="restart" onclick="restartCam('${cam.name}')">Restart</button>
+                `;
+
+                grid.appendChild(card);
+            });
+        });
+
+        function startCam(name) {
+            socket.emit("start_camera", { name });
+        }
+
+        function stopCam(name) {
+            socket.emit("stop_camera", { name });
+        }
+
+        function restartCam(name) {
+            socket.emit("restart_camera", { name });
+        }
+
+        function formatLatency(cam) {
+            if (!cam.alive) {
+                return "<span style='color:red'>OFFLINE</span>";
+            }
+
+            if (cam.latency < 20) {
+                return `<span style="color:#16a34a">${cam.latency} ms (Excellent)</span>`;
+            }
+
+            if (cam.latency < 80) {
+                return `<span style="color:#f59e0b">${cam.latency} ms (Normal)</span>`;
+            }
+
+            return `<span style="color:#dc2626">${cam.latency} ms (Slow)</span>`;
+        }
+    </script>
+
+</body>
+
+</html>

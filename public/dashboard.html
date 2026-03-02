@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>CCTV Monitoring</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: white;
+      padding: 20px;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: #1e293b;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.4);
+    }
+
+    .status {
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+      display: inline-block;
+      margin-bottom: 10px;
+    }
+
+    .running { background: #16a34a; }
+    .stopped { background: #dc2626; }
+
+    button {
+      margin: 5px 5px 0 0;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .start { background: #16a34a; color: white; }
+    .stop { background: #dc2626; color: white; }
+    .restart { background: #f59e0b; color: black; }
+
+    .latency-good { color: #16a34a; }
+    .latency-normal { color: #f59e0b; }
+    .latency-bad { color: #dc2626; }
+  </style>
+</head>
+
+<body>
+
+<h1>🎥 CCTV Realtime Monitoring</h1>
+
+<div class="grid" id="grid"></div>
+
+<script>
+  const socket = io();
+  const grid = document.getElementById("grid");
+
+  socket.on("camera_status", (cameras) => {
+
+    cameras.forEach(cam => {
+
+      let card = document.getElementById("cam-" + cam.name);
+
+      if (!card) {
+        card = document.createElement("div");
+        card.className = "card";
+        card.id = "cam-" + cam.name;
+        grid.appendChild(card);
+      }
+
+      const statusClass = cam.running ? "running" : "stopped";
+      const statusText = cam.running ? "RUNNING" : "STOPPED";
+
+      let latencyHTML = "OFFLINE";
+      let latencyClass = "latency-bad";
+
+      if (cam.alive) {
+        if (cam.latency < 20) {
+          latencyClass = "latency-good";
+        } else if (cam.latency < 80) {
+          latencyClass = "latency-normal";
+        }
+        latencyHTML = cam.latency + " ms";
+      }
+
+      card.innerHTML = `
+        <h3>${cam.name}</h3>
+        <div class="status ${statusClass}">${statusText}</div>
+        <p>Latency: <span class="${latencyClass}">${latencyHTML}</span></p>
+        <p>Retry Count: ${cam.retryCount}</p>
+        <p>Timeout Count: ${cam.timeoutCount}</p>
+        <button class="start" onclick="sendCommand('start','${cam.name}')">Start</button>
+        <button class="stop" onclick="sendCommand('stop','${cam.name}')">Stop</button>
+        <button class="restart" onclick="sendCommand('restart','${cam.name}')">Restart</button>
+      `;
+    });
+
+  });
+
+  function sendCommand(action, name) {
+    console.log("command:", { action, name });
+    socket.emit("command", { action, name });
+  }
+</script>
+
+</body>
+</html>
