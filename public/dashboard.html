@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8">
   <title>CCTV Monitoring</title>
@@ -28,7 +29,7 @@
       background: #1e293b;
       padding: 15px;
       border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.4);
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
     }
 
     .status {
@@ -40,8 +41,13 @@
       margin-bottom: 10px;
     }
 
-    .running { background: #16a34a; }
-    .stopped { background: #dc2626; }
+    .running {
+      background: #16a34a;
+    }
+
+    .stopped {
+      background: #dc2626;
+    }
 
     button {
       margin: 5px 5px 0 0;
@@ -52,55 +58,93 @@
       font-size: 12px;
     }
 
-    .start { background: #16a34a; color: white; }
-    .stop { background: #dc2626; color: white; }
-    .restart { background: #f59e0b; color: black; }
+    .start {
+      background: #16a34a;
+      color: white;
+    }
 
-    .latency-good { color: #16a34a; }
-    .latency-normal { color: #f59e0b; }
-    .latency-bad { color: #dc2626; }
+    .stop {
+      background: #dc2626;
+      color: white;
+    }
+
+    .restart {
+      background: #f59e0b;
+      color: black;
+    }
+
+    .latency-good {
+      color: #16a34a;
+    }
+
+    .latency-normal {
+      color: #f59e0b;
+    }
+
+    .latency-bad {
+      color: #dc2626;
+    }
   </style>
 </head>
 
 <body>
 
-<h1>🎥 CCTV Realtime Monitoring</h1>
+  <h1>🎥 CCTV Realtime Monitoring <span id="counter">0</span></h1>
+  <div style="margin-bottom:20px">
 
-<div class="grid" id="grid"></div>
+    <button onclick="startAll()" style="padding:10px;background:green;color:white">
+      START ALL CAMERA
+    </button>
 
-<script>
-  const socket = io();
-  const grid = document.getElementById("grid");
+    <button onclick="stopAll()" style="padding:10px;background:red;color:white">
+      STOP ALL CAMERA
+    </button>
 
-  socket.on("camera_status", (cameras) => {
+  </div>
 
-    cameras.forEach(cam => {
+  <div class="grid" id="grid"></div>
 
-      let card = document.getElementById("cam-" + cam.name);
+  <script>
+    const socket = io();
+    const grid = document.getElementById("grid");
 
-      if (!card) {
-        card = document.createElement("div");
-        card.className = "card";
-        card.id = "cam-" + cam.name;
-        grid.appendChild(card);
-      }
 
-      const statusClass = cam.running ? "running" : "stopped";
-      const statusText = cam.running ? "RUNNING" : "STOPPED";
+    let counter = 0;
+    document.getElementById("counter").textContent = counter;
 
-      let latencyHTML = "OFFLINE";
-      let latencyClass = "latency-bad";
+    socket.on("camera_status", (cameras) => {
+      counter++;
+      document.getElementById("counter").textContent = counter;
 
-      if (cam.alive) {
-        if (cam.latency < 20) {
-          latencyClass = "latency-good";
-        } else if (cam.latency < 80) {
-          latencyClass = "latency-normal";
+      //console.log("Total Camera:", cameras.length);
+
+      cameras.forEach(cam => {
+
+        let card = document.getElementById("cam-" + cam.name);
+
+        if (!card) {
+          card = document.createElement("div");
+          card.className = "card";
+          card.id = "cam-" + cam.name;
+          grid.appendChild(card);
         }
-        latencyHTML = cam.latency + " ms";
-      }
 
-      card.innerHTML = `
+        const statusClass = cam.running ? "running" : "stopped";
+        const statusText = cam.running ? "RUNNING" : "STOPPED";
+
+        let latencyHTML = "OFFLINE";
+        let latencyClass = "latency-bad";
+
+        if (cam.alive) {
+          if (cam.latency < 20) {
+            latencyClass = "latency-good";
+          } else if (cam.latency < 80) {
+            latencyClass = "latency-normal";
+          }
+          latencyHTML = cam.latency + " ms";
+        }
+
+        card.innerHTML = `
         <h3>${cam.name}</h3>
         <div class="status ${statusClass}">${statusText}</div>
         <p>Latency: <span class="${latencyClass}">${latencyHTML}</span></p>
@@ -110,15 +154,27 @@
         <button class="stop" onclick="sendCommand('stop','${cam.name}')">Stop</button>
         <button class="restart" onclick="sendCommand('restart','${cam.name}')">Restart</button>
       `;
+      });
+
     });
 
-  });
+    function sendCommand(action, name) {
+      console.log("command:", { action, name });
+      socket.emit("command", { action, name });
+    }
+    function startAll() {
+      socket.emit("command", {
+        action: "start_all"
+      });
+    }
 
-  function sendCommand(action, name) {
-    console.log("command:", { action, name });
-    socket.emit("command", { action, name });
-  }
-</script>
+    function stopAll() {
+      socket.emit("command", {
+        action: "stop_all"
+      });
+    }
+  </script>
 
 </body>
+
 </html>
